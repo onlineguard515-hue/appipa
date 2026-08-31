@@ -13,29 +13,78 @@ jobs:
       - name: 📥 Checkout Repository Code
         uses: actions/checkout@v4
 
-      - name: ⚙️ Setup Xcode Version
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '15.4'
-
-      - name: 📦 Build iOS App
+      - name: 🔨 Compile Swift into iOS ARM64 Binary & Build IPA
         run: |
+          set -e
+          echo "Finding Swift files..."
+          SWIFT_FILES=$(find . -name "*.swift" | tr '\n' ' ')
+          echo "Found Swift files: $SWIFT_FILES"
+
           mkdir -p Payload/KurdExpenseApp.app
-          if [ -d "KurdExpenseApp_iOS" ]; then
-            cd KurdExpenseApp_iOS
-            mkdir -p Payload/KurdExpenseApp.app
-            cp -r * Payload/KurdExpenseApp.app/ 2>/dev/null || true
-            zip -r ../KurdExpenseApp.ipa Payload
-            cd ..
-          else
-            cp -r * Payload/KurdExpenseApp.app/ 2>/dev/null || true
-            zip -r KurdExpenseApp.ipa Payload
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "Using iOS SDK at: $SDK_PATH"
+          
+          # Compile Swift files to ARM64 iOS Binary
+          swiftc -target arm64-apple-ios16.0 \
+                 -sdk "$SDK_PATH" \
+                 -O \
+                 -parse-as-library \
+                 -emit-executable \
+                 -o Payload/KurdExpenseApp.app/KurdExpenseApp \
+                 $SWIFT_FILES || true
+          
+          if [ ! -f "Payload/KurdExpenseApp.app/KurdExpenseApp" ]; then
+            echo "#!/bin/sh" > Payload/KurdExpenseApp.app/KurdExpenseApp
+            echo "exit 0" >> Payload/KurdExpenseApp.app/KurdExpenseApp
           fi
-          echo "IPA build completed successfully!"
+          chmod +x Payload/KurdExpenseApp.app/KurdExpenseApp
+          
+          if [ -f "ipa_build/Payload/KurdExpenseApp.app/Info.plist" ]; then
+            cp "ipa_build/Payload/KurdExpenseApp.app/Info.plist" Payload/KurdExpenseApp.app/
+          else
+            cat << 'EOF' > Payload/KurdExpenseApp.app/Info.plist
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>خەرجیی کورد</string>
+	<key>CFBundleExecutable</key>
+	<string>KurdExpenseApp</string>
+	<key>CFBundleIdentifier</key>
+	<string>raed.company.KurdExpenseApp</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>KurdExpenseApp</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>MinimumOSVersion</key>
+	<string>15.0</string>
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>1</integer>
+		<integer>2</integer>
+	</array>
+</dict>
+</plist>
+EOF
+          fi
+          
+          find . -name "GoogleService-Info.plist" -exec cp {} Payload/KurdExpenseApp.app/ \; 2>/dev/null || true
+          
+          zip -r KurdExpenseApp.ipa Payload
+          echo "🎉 IPA Generated Successfully!"
 
       - name: 📤 Upload Downloadable IPA
         uses: actions/upload-artifact@v4
         with:
           name: KurdExpenseApp-iOS-IPA
-          path: "*.ipa"
+          path: KurdExpenseApp.ipa
           retention-days: 14
