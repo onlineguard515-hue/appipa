@@ -7,87 +7,32 @@ on:
 
 jobs:
   build-ipa:
-    runs-on: macos-latest
+    runs-on: macos-14
     
     steps:
       - name: 📥 Checkout Repository Code
         uses: actions/checkout@v4
 
-      - name: 🔨 Build iOS Mach-O Binary & IPA
+      - name: 🔨 Compile iOS Binary & Package IPA
         run: |
-          # 1. Select Active Apple Developer Environment
-          if [ -d "/Applications/Xcode.app" ]; then
-            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-          fi
-          
           mkdir -p Payload/KurdExpenseApp.app
-          
-          # 2. Get iOS SDK
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          echo "Using iOS SDK at: $SDK_PATH"
           
-          # 3. Create C source for minimal iOS entry
-          cat << 'EOF' > main.c
-          #include <stdio.h>
-          #include <stdlib.h>
-          int main(int argc, char *argv[]) {
-              return 0;
-          }
-          EOF
+          # Compile Real Apple ARM64 Executable
+          xcrun clang -target arm64-apple-ios14.0 -isysroot "$SDK_PATH" -framework UIKit -framework Foundation -o Payload/KurdExpenseApp.app/KurdExpenseApp -x objective-c - <<< '#import <UIKit/UIKit.h>
+          int main(int argc, char * argv[]) { @autoreleasepool { return UIApplicationMain(argc, argv, nil, nil); } }'
           
-          # 4. Compile Real ARM64 Mach-O Binary for iOS
-          xcrun clang -target arm64-apple-ios15.0 -isysroot "$SDK_PATH" main.c -o Payload/KurdExpenseApp.app/KurdExpenseApp
           chmod +x Payload/KurdExpenseApp.app/KurdExpenseApp
           
-          # 5. Create Info.plist
-          cat << 'EOF' > Payload/KurdExpenseApp.app/Info.plist
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>CFBundleDisplayName</key>
-	<string>خەرجیی کورد</string>
-	<key>CFBundleExecutable</key>
-	<string>KurdExpenseApp</string>
-	<key>CFBundleIdentifier</key>
-	<string>raed.company.KurdExpenseApp</string>
-	<key>CFBundleInfoDictionaryVersion</key>
-	<string>6.0</string>
-	<key>CFBundleName</key>
-	<string>KurdExpenseApp</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
-	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
-	<key>MinimumOSVersion</key>
-	<string>14.0</string>
-	<key>UIDeviceFamily</key>
-	<array>
-		<integer>1</integer>
-		<integer>2</integer>
-	</array>
-	<key>UIRequiredDeviceCapabilities</key>
-	<array>
-		<string>arm64</string>
-	</array>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	</array>
-</dict>
-</plist>
-EOF
+          # Copy Info.plist
+          if [ -f "ipa_build/Payload/KurdExpenseApp.app/Info.plist" ]; then
+            cp "ipa_build/Payload/KurdExpenseApp.app/Info.plist" Payload/KurdExpenseApp.app/
+          else
+            find . -name "Info.plist" -exec cp {} Payload/KurdExpenseApp.app/ \; 2>/dev/null || true
+          fi
           
-          # 6. Copy app resources if available
-          find . -name "GoogleService-Info.plist" -exec cp {} Payload/KurdExpenseApp.app/ \; 2>/dev/null || true
-          
-          # 7. Zip into .ipa
+          # Zip into IPA
           zip -r KurdExpenseApp.ipa Payload
-          echo "🎉 IPA Generated Successfully!"
 
       - name: 📤 Upload Downloadable IPA
         uses: actions/upload-artifact@v4
