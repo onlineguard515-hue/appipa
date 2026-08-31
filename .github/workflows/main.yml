@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-ipa:
-    runs-on: macos-14
+    runs-on: macos-latest
     
     steps:
       - name: 📥 Checkout Repository Code
@@ -15,18 +15,19 @@ jobs:
 
       - name: 🔨 Build iOS Mach-O Binary & IPA
         run: |
+          # 1. Select Active Apple Developer Environment
+          if [ -d "/Applications/Xcode.app" ]; then
+            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          fi
+          
           mkdir -p Payload/KurdExpenseApp.app
           
+          # 2. Get iOS SDK
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          echo "iOS SDK: $SDK_PATH"
+          echo "Using iOS SDK at: $SDK_PATH"
           
-          # Compile Real ARM64 Mach-O Executable for iOS
-          clang -target arm64-apple-ios15.0 \
-                -isysroot "$SDK_PATH" \
-                -framework UIKit \
-                -framework Foundation \
-                -o Payload/KurdExpenseApp.app/KurdExpenseApp \
-                -x c - << 'EOF'
+          # 3. Create C source for minimal iOS entry
+          cat << 'EOF' > main.c
           #include <stdio.h>
           #include <stdlib.h>
           int main(int argc, char *argv[]) {
@@ -34,9 +35,11 @@ jobs:
           }
           EOF
           
+          # 4. Compile Real ARM64 Mach-O Binary for iOS
+          xcrun clang -target arm64-apple-ios15.0 -isysroot "$SDK_PATH" main.c -o Payload/KurdExpenseApp.app/KurdExpenseApp
           chmod +x Payload/KurdExpenseApp.app/KurdExpenseApp
           
-          # Create complete Info.plist
+          # 5. Create Info.plist
           cat << 'EOF' > Payload/KurdExpenseApp.app/Info.plist
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -61,7 +64,7 @@ jobs:
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>MinimumOSVersion</key>
-	<string>15.0</string>
+	<string>14.0</string>
 	<key>UIDeviceFamily</key>
 	<array>
 		<integer>1</integer>
@@ -79,8 +82,10 @@ jobs:
 </plist>
 EOF
           
+          # 6. Copy app resources if available
           find . -name "GoogleService-Info.plist" -exec cp {} Payload/KurdExpenseApp.app/ \; 2>/dev/null || true
           
+          # 7. Zip into .ipa
           zip -r KurdExpenseApp.ipa Payload
           echo "🎉 IPA Generated Successfully!"
 
